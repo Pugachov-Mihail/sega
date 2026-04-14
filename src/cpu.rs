@@ -1,3 +1,4 @@
+use crate::bus::Bus;
 use crate::cpu::Instruction::*;
 
 #[repr(C)]
@@ -16,7 +17,7 @@ pub struct CPU {
     // "был ли результат прошлого сложения равен нулю?" или "произошло ли переполнение?").
     pub sr: u16,
 
-    pub memory: Vec<u8>
+    pub bus: Bus,
 }
 
 impl CPU {
@@ -26,13 +27,13 @@ impl CPU {
             a: [0; 8],
             pc: 0x200,
             sr: 0,
-            memory: vec![0; 4 * 1024 * 1024],
+            bus: Bus::new(),
         }
     }
 
     pub fn fetch(&mut self) -> u16 {
-        let first = self.memory[self.pc as usize];
-        let second = self.memory[(self.pc as usize) + 1];
+        let first = self.bus.read_u8(self.pc);
+        let second = self.bus.read_u8(self.pc + 1);
         let opcode = (first as u16) << 8 | (second as u16);
         self.pc += 2;
         opcode
@@ -127,38 +128,38 @@ impl CPU {
     }
 
     pub fn write_memory_u16(&mut self, addr: u32, val: u16) {
-        self.memory[addr as usize] = (val >> 8) as u8;
-        self.memory[(addr + 1) as usize] = val  as u8;
+        self.bus.write_u8(addr, (val >> 8) as u8);
+        self.bus.write_u8(addr + 1, val as u8) ;
     }
 
     pub fn write_memory_u32(&mut self, addr: u32, val: u32) {
-        self.memory[addr as usize] = ((val >> 24) & 0xFF) as u8;
-        self.memory[(addr + 1) as usize] = ((val >> 16) & 0xFF) as u8;
-        self.memory[(addr + 2) as usize] = ((val >> 8) & 0xFF) as u8;
-        self.memory[(addr + 3) as usize] = ((val & 0xFF)) as u8;
+        self.bus.write_u8(addr , ((val >> 24) & 0xFF) as u8);
+        self.bus.write_u8(addr + 1 , ((val >> 16) & 0xFF) as u8);
+        self.bus.write_u8(addr + 2 , ((val >> 8) & 0xFF) as u8);
+        self.bus.write_u8(addr + 3, (val & 0xFF) as u8);
     }
 
     pub fn read_memory_u32(&self, addr: u32) -> u32 {
-        let b0 = self.memory[addr as usize] as u32;
-        let b1 = self.memory[(addr + 1) as usize] as u32;
-        let b2 = self.memory[(addr + 2) as usize] as u32;
-        let b3 = self.memory[(addr + 3) as usize] as u32;
+        let b0 = self.bus.read_u8(addr ) as u32;
+        let b1 = self.bus.read_u8(addr + 1) as u32;
+        let b2 = self.bus.read_u8(addr + 2) as u32;
+        let b3 = self.bus.read_u8(addr + 3) as u32;
 
         (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
     }
 
     // Операция PUSH: Сначала УМЕНЬШАЕМ указатель стека (A7), затем пишем
     pub fn push32(&mut self, val: u32) {
-        self.a[4] -= 4;
-        let sp = self.a[4];
+        self.a[7] -= 4;
+        let sp = self.a[7];
         self.write_memory_u32(sp, val);
     }
 
     // Операция POP: Сначала читаем, затем УВЕЛИЧИВАЕМ указатель стека
     pub fn pop32(&mut self) -> u32 {
-        let sp = self.a[4];
+        let sp = self.a[7];
         let val = self.read_memory_u32(sp);
-        self.a[4] += 4;
+        self.a[7] += 4;
         val
     }
 
