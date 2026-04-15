@@ -41,6 +41,15 @@ impl CPU {
 
     pub fn decode(&mut self, opcode: u16) -> Instruction {
         match opcode {
+            0x0200 => {
+                let next_word = self.fetch();
+                let imm = (next_word & 0xFF) as u8;
+                return AndiB_Imm_D0 {imm}
+            }
+            0x1029 => {
+                let offset = self.fetch() as i16;
+                return MoveBDispA1D0 {offset}
+            }
             0x4CDD => {
                 let mask = self.fetch();
                 return MovemLPostIncA5 {mask}
@@ -110,8 +119,53 @@ impl CPU {
 
     pub fn execute(&mut self, inst: Instruction) {
         match inst {
+            AndiB_Imm_D0 {imm} => {
+                let current_val = (self.d[0] & 0xFF) as u8;
+                let result = current_val & imm;
+                println!("ANDI.B: Маскируем D0 (значение {:#04X}) константой {:#04X}, результат: {:#04X}", current_val, imm, result);
+                self.sr &= !0x0F;
+
+                if result == 0 {
+                    self.sr |= 0x04;
+                }
+                if (result & 0x80) != 0 {
+                    self.sr |= 0x08;
+                }
+                self.d[0] = (self.d[0] & 0xFFFFFF00) | (result as u32);
+            }
+            MoveBDispA1D0 {offset} => {
+                let addr = (self.a[1] as i32 + offset as i32) as u32;
+
+                let val = self.bus.read_u8(addr);
+                println!("MOVE.B: Читаем байт {:#04X} по адресу {:#010X} (A1 + {}) и кладем в D0", val, addr, offset);
+                self.sr &= !0x0F;
+
+                if val == 0 {
+                    self.sr |= 0x04;
+                }
+                if (val & 0x80) != 0 {
+                    self.sr |= 0x08;
+                }
+
+                self.d[0] = (self.d[0] & 0xFFFFFF00) | (val as u32);
+            }
             MovemLPostIncA5 {mask} => {
-                
+                println!("MOVEM.L: Чтение множества регистров (32-бит) по маске {:#018b} из (A5)+", mask);
+
+                for i in 0..16 {
+                    if (mask & (1 << i)) != 0 {
+                        let val = self.read_memory_u32(self.a[1]);
+                        if i < 8 {
+                            self.d[i as usize] = val;
+                            println!(" -> Загружен D{}: {:#010X}", i, val);
+                        } else {
+                            self.a[(i - 8) as usize] = val;
+                            println!(" -> Загружен A{}: {:#010X}", i - 8, val);
+                        }
+
+                        self.a[1] += 4;
+                    }
+                }
             }
             MovemWPostIncA5 {mask} => {
                 println!("MOVEM.W: Чтение множества регистров по маске {:#018b} из (A5)+", mask);
@@ -270,4 +324,6 @@ pub enum Instruction {
     LeaPcA5 {addr: u32},
     MovemWPostIncA5 { mask: u16 },
     MovemLPostIncA5 { mask: u16 },
+    MoveBDispA1D0 { offset: i16 },
+    AndiB_Imm_D0 { imm: u8 },
 }

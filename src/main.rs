@@ -28,10 +28,12 @@ fn main() {
     // 3. Запускаем конвейер Fetch, чтобы просто ПОСМОТРЕТЬ на первые инструкции Соника!
     // Мы пока не будем вызывать decode и execute, так как игра использует
     // кучу новых команд, которые наш декодер пока не понимает.
-    for i in 0..10 {
+    let mut i = 0;
+    loop {
         let opcode = cpu.fetch();
         let inst = cpu.decode(opcode);
         cpu.execute(inst);
-        println!("Такт {}: PC={:#010X} | Прочитан опкод: {:#06X}", i, cpu.pc - 2, opcode);
+        i += 1;
+        println!("циклов {}",i)
     }
 }
