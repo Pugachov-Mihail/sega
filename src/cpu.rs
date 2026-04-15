@@ -41,6 +41,14 @@ impl CPU {
 
     pub fn decode(&mut self, opcode: u16) -> Instruction {
         match opcode {
+            0x4CDD => {
+                let mask = self.fetch();
+                return MovemLPostIncA5 {mask}
+            }
+            0x4C9D => {
+                let mask = self.fetch();
+                return MovemWPostIncA5 {mask}
+            }
             0x4EB9 => {
                 let addr = self.read_memory_u32(self.pc);
                 self.pc += 4;
@@ -49,6 +57,28 @@ impl CPU {
             0x4E75 => {
                 return Rts
             },
+            0x4AB9 => {
+                let addr = self.read_memory_u32(self.pc);
+                self.pc += 4;
+                return TstL {addr}
+            },
+            0x4FF8 => {
+                let word = self.fetch();
+                let addr = (word as i16) as i32 as u32;
+                return LeaA7 { addr }
+            }
+            0x4A79 => {
+                let addr = self.read_memory_u32(self.pc);
+                self.pc += 4;
+                return TstW { addr }
+            }
+            0x4BFA => {
+                let extension_word_pc = self.pc;
+                let offset = self.fetch();
+                let sing_offset = (offset as i16) as i32;
+                let addr = (extension_word_pc as i32 + sing_offset) as u32;
+                return LeaPcA5 {addr}
+            }
             _ => {}
         }
 
@@ -80,6 +110,60 @@ impl CPU {
 
     pub fn execute(&mut self, inst: Instruction) {
         match inst {
+            MovemLPostIncA5 {mask} => {
+                
+            }
+            MovemWPostIncA5 {mask} => {
+                println!("MOVEM.W: Чтение множества регистров по маске {:#018b} из (A5)+", mask);
+
+                for i in 0..16 {
+                    if (mask & (1 << i)) != 0 {
+                        let val =self.read_memory_u16(self.a[6]);
+
+                        let sing_extended = (val as i16) as i32 as u32;
+
+                        if i < 8 {
+                            self.d[i as usize] = sing_extended;
+                            println!(" -> Загружен D{}: {:#010X}", i, sing_extended);
+                        } else {
+                            self.a[(i - 8)as usize] = sing_extended;
+                            println!(" -> Загружен A{}: {:#010X}", i - 8, sing_extended);
+                        }
+                        self.a[6] += 2;
+                    }
+                }
+            }
+            LeaPcA5 {addr} => {
+                println!("LEA: Вычислен PC-относительный адрес {:#010X}. Сохраняем указатель в A5", addr);
+                self.a[1] = addr;
+            }
+            TstW { addr } => {
+                let val = self.read_memory_u16(addr);
+                println!("TST.W: Чтение адреса {:#010X}, получено значение {:#06X}", addr, val);
+                self.sr &= !0x0C;
+                if val == 0 {
+                    self.sr |= 0x04;
+                }
+
+                if (val & 0x8000) != 0 {
+                    self.sr |= 0x08;
+                }
+            },
+            LeaA7 { addr } => {
+                println!("LEA: Инициализация Стека. A7 установлен в {:#010X}", addr);
+                self.a[2] = addr;
+            }
+            TstL { addr } => {
+                let val = self.read_memory_u32(addr);
+                println!("TST.L: Проверяем значение {:#010X} по адресу {:#010X}", val, addr);
+                self.sr &= !0x0C;
+                if val == 0 {
+                    self.sr |= 0x04;
+                }
+                if (val & 0x80000000) != 0 {
+                    self.sr |= 0x08;
+                }
+            },
            Moveq { register, data } => {
                 let extended_data  = data as i8 as i32 as u32;
                 self.d[register as usize] = extended_data;
@@ -132,6 +216,12 @@ impl CPU {
         self.bus.write_u8(addr + 1, val as u8) ;
     }
 
+    pub fn read_memory_u16(&self, addr: u32) -> u16 {
+     let b0 = self.bus.read_u8(addr) as u16;
+        let b1 = self.bus.read_u8(addr + 1) as u16;
+        (b0 << 8) | b1
+    }
+
     pub fn write_memory_u32(&mut self, addr: u32, val: u32) {
         self.bus.write_u8(addr , ((val >> 24) & 0xFF) as u8);
         self.bus.write_u8(addr + 1 , ((val >> 16) & 0xFF) as u8);
@@ -174,4 +264,10 @@ pub enum Instruction {
     Bne{offset: i8},
     Jsr { addr: u32 }, // Jump to Subroutine
     Rts,               // Return from Subroutine
+    TstL {addr: u32},
+    LeaA7 {addr: u32},
+    TstW { addr: u32},
+    LeaPcA5 {addr: u32},
+    MovemWPostIncA5 { mask: u16 },
+    MovemLPostIncA5 { mask: u16 },
 }

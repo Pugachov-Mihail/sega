@@ -30,6 +30,8 @@ fn main() {
     // кучу новых команд, которые наш декодер пока не понимает.
     for i in 0..10 {
         let opcode = cpu.fetch();
+        let inst = cpu.decode(opcode);
+        cpu.execute(inst);
         println!("Такт {}: PC={:#010X} | Прочитан опкод: {:#06X}", i, cpu.pc - 2, opcode);
     }
 }

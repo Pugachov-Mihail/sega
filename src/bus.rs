@@ -18,6 +18,10 @@ impl Bus {
         match addr {
             0x000000..=0x3FFFFF => self.rom[addr as usize],
             0xFF0000..=0xFFFFFF => self.ram[(addr & 0xFFFF) as usize],
+            0xA10008..=0xA1000B => 0x00,
+            0xA10000..=0xA10007 => 0x00,
+            0x00A10008..=0x00A1000B => 0x00,
+            0x00A10000..=0x00A1001F => 0x00,
             _ => 0,
         }
     }
