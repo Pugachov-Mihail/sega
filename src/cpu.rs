@@ -40,7 +40,17 @@ impl CPU {
     }
 
     pub fn decode(&mut self, opcode: u16) -> Instruction {
+        if (opcode & 0xFF00) == 0x6700 {
+            let offset = (opcode & 0xFF) as i8;
+            return BeqS {offset}
+        }
         match opcode {
+            0x2C40 => {
+                return MoveL_PreDec_A0_D6;
+            }
+            0x3014 => {
+                return MoveW_Ind_A4_D0;
+            }
             0x0200 => {
                 let next_word = self.fetch();
                 let imm = (next_word & 0xFF) as u8;
@@ -119,10 +129,49 @@ impl CPU {
 
     pub fn execute(&mut self, inst: Instruction) {
         match inst {
+            MoveL_PreDec_A0_D6 => {
+                self.a[0] = self.a[0].wrapping_sub(4);
+
+                let addr = self.a[0];
+
+                let val = self.read_memory_u32(addr);
+
+                self.sr &= !0x0F;
+
+                if val == 0 {
+                    self.sr |= 0x04;
+                }
+                if (val & 0x8000_0000) != 0 {
+                    self.sr |= 0x08;
+                }
+                self.d[6] = val;
+            }
+            MoveW_Ind_A4_D0 => {
+                let add = self.a[4];
+                let val = self.read_memory_u16(add);
+                self.sr &= !0x0F;
+
+                if val == 0 {
+                    self.sr |= 0x04;
+                }
+                if (val & 0x8000) != 0 {
+                    self.sr |= 0x08;
+                }
+
+                self.d[0] = (self.d[0] & 0xFFFF0000) | (val as u32);
+             }
+            BeqS {offset} => {
+                let z_flag = (self.sr & 0x04) != 0;
+
+                if z_flag {
+                    let target = (self.pc as i32 + offset as i32) as u32;
+                    self.pc = target;
+                } else {
+                }
+            }
             AndiB_Imm_D0 {imm} => {
                 let current_val = (self.d[0] & 0xFF) as u8;
                 let result = current_val & imm;
-                println!("ANDI.B: Маскируем D0 (значение {:#04X}) константой {:#04X}, результат: {:#04X}", current_val, imm, result);
                 self.sr &= !0x0F;
 
                 if result == 0 {
@@ -137,8 +186,7 @@ impl CPU {
                 let addr = (self.a[1] as i32 + offset as i32) as u32;
 
                 let val = self.bus.read_u8(addr);
-                println!("MOVE.B: Читаем байт {:#04X} по адресу {:#010X} (A1 + {}) и кладем в D0", val, addr, offset);
-                self.sr &= !0x0F;
+               self.sr &= !0x0F;
 
                 if val == 0 {
                     self.sr |= 0x04;
@@ -150,17 +198,13 @@ impl CPU {
                 self.d[0] = (self.d[0] & 0xFFFFFF00) | (val as u32);
             }
             MovemLPostIncA5 {mask} => {
-                println!("MOVEM.L: Чтение множества регистров (32-бит) по маске {:#018b} из (A5)+", mask);
-
                 for i in 0..16 {
                     if (mask & (1 << i)) != 0 {
                         let val = self.read_memory_u32(self.a[1]);
                         if i < 8 {
                             self.d[i as usize] = val;
-                            println!(" -> Загружен D{}: {:#010X}", i, val);
                         } else {
                             self.a[(i - 8) as usize] = val;
-                            println!(" -> Загружен A{}: {:#010X}", i - 8, val);
                         }
 
                         self.a[1] += 4;
@@ -168,7 +212,6 @@ impl CPU {
                 }
             }
             MovemWPostIncA5 {mask} => {
-                println!("MOVEM.W: Чтение множества регистров по маске {:#018b} из (A5)+", mask);
 
                 for i in 0..16 {
                     if (mask & (1 << i)) != 0 {
@@ -178,22 +221,22 @@ impl CPU {
 
                         if i < 8 {
                             self.d[i as usize] = sing_extended;
-                            println!(" -> Загружен D{}: {:#010X}", i, sing_extended);
+
                         } else {
                             self.a[(i - 8)as usize] = sing_extended;
-                            println!(" -> Загружен A{}: {:#010X}", i - 8, sing_extended);
+
                         }
                         self.a[6] += 2;
                     }
                 }
             }
             LeaPcA5 {addr} => {
-                println!("LEA: Вычислен PC-относительный адрес {:#010X}. Сохраняем указатель в A5", addr);
+
                 self.a[1] = addr;
             }
             TstW { addr } => {
                 let val = self.read_memory_u16(addr);
-                println!("TST.W: Чтение адреса {:#010X}, получено значение {:#06X}", addr, val);
+
                 self.sr &= !0x0C;
                 if val == 0 {
                     self.sr |= 0x04;
@@ -204,12 +247,12 @@ impl CPU {
                 }
             },
             LeaA7 { addr } => {
-                println!("LEA: Инициализация Стека. A7 установлен в {:#010X}", addr);
+
                 self.a[2] = addr;
             }
             TstL { addr } => {
                 let val = self.read_memory_u32(addr);
-                println!("TST.L: Проверяем значение {:#010X} по адресу {:#010X}", val, addr);
+
                 self.sr &= !0x0C;
                 if val == 0 {
                     self.sr |= 0x04;
@@ -221,7 +264,7 @@ impl CPU {
            Moveq { register, data } => {
                 let extended_data  = data as i8 as i32 as u32;
                 self.d[register as usize] = extended_data;
-                println!("MOVEQ: кладем {:#04X} в D{}", extended_data, register);
+
             }
             Add { src, dest } => {
                 let val1 = self.d[dest as usize];
@@ -240,24 +283,19 @@ impl CPU {
                 // 3. C (Carry)
                 if carry { self.sr |= 0x01; } else { self.sr &= !0x01; }
 
-                println!("ADD: сложили {:#010X} и {:#010X}, результат: {:#010X}", val1, val2, result);
+
             }
             Bne { offset } => {
                 if (self.sr & 0x04) == 0 {
                     self.pc = (self.pc as i32 + offset as i32) as u32;
-                    println!("BNE: Результат не ноль! Прыгаем на адрес {:#06X}", self.pc);
-                } else {
-                    println!("BNE: Результат ноль! Цикл завершен.");
                 }
             },
             Jsr { addr } => {
                 self.push32(self.pc);
                 self.pc = addr;
-                println!("JSR: Прыгаем в подпрограмму по адресу {:#06X}", addr);
             },
             Rts {} => {
                 self.pc = self.pop32();
-                println!("RTS: Возврат из подпрограммы на адрес {:#06X}", self.pc);
             }
             Unknown(raw_opcode) => {
                 panic!("КРИТИЧЕСКАЯ ОШИБКА: Неизвестная инструкция {:#06X}", raw_opcode);
@@ -326,4 +364,7 @@ pub enum Instruction {
     MovemLPostIncA5 { mask: u16 },
     MoveBDispA1D0 { offset: i16 },
     AndiB_Imm_D0 { imm: u8 },
+    BeqS {offset: i8},
+    MoveW_Ind_A4_D0,
+    MoveL_PreDec_A0_D6,
 }
