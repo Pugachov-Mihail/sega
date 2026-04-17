@@ -19,4 +19,6 @@ pub enum Instruction {
     MoveL_PreDec_A0_D6,
     MoveA6ToUsp,
     MoveB_PostInc_A5_D5,
+    MoveW_D5_Ind_A4,
+    AddW_D7_D5,
 }

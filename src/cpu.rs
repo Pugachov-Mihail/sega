@@ -49,6 +49,12 @@ impl CPU {
             return BeqS {offset}
         }
         match opcode {
+            0xDA47 => {
+                return AddW_D7_D5;
+            }
+            0x3885 => {
+                return MoveW_D5_Ind_A4;
+            }
             0x1A1D => {
                 return MoveB_PostInc_A5_D5;
             }
@@ -139,6 +145,47 @@ impl CPU {
 
     pub fn execute(&mut self, inst: Instruction) {
         match inst {
+            AddW_D7_D5 => {
+                let src = (self.d[7] & 0xFFFF) as u16;
+                let dst = (self.d[5] & 0xFFFF) as u16;
+
+                let res_32 = (dst as u32) + (src as u32);
+                let res_16 = res_32 as u16;
+
+                self.sr &= !0x1F;
+
+                if res_16 == 0 {
+                    self.sr |= 0x04;
+                }
+
+                if (res_16 & 0x8000) != 0 {
+                    self.sr |= 0x08;
+                }
+
+                if res_32 > 0xFFFF {
+                    self.sr |= 0x01;
+                    self.sr |= 0x10;
+                }
+
+                let src_sign = (src & 0x8000) != 0;
+                let dst_sign = (dst & 0x8000) != 0;
+                let res_sign = (res_16 & 0x8000) != 0;
+
+                if (src_sign == dst_sign) && (src_sign != res_sign) {
+                    self.sr |= 0x02;
+                }
+
+                self.d[5] = (self.d[5] & 0xFFFF0000) | (res_16 as u32);
+             }
+            MoveW_D5_Ind_A4 => {
+                let val = (self.d[5] & 0xFFFF) as u16;
+
+                let addr = self.a[4];
+
+                self.write_memory_u16(addr, val);
+
+                self.set_flags_u16(val);
+            }
             MoveB_PostInc_A5_D5 => {
                 let addr = self.a[5];
 
@@ -382,6 +429,16 @@ impl CPU {
         val
     }
 
+    fn set_flags_u16(&mut self, val: u16) {
+        self.sr &= !0x0F;
 
+        if val == 0 {
+            self.sr |= 0x04;
+        }
+        if (val & 0x08) != 0 {
+            self.sr |= 0x08;
+        }
+    }
 }
+
 
