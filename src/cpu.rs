@@ -1,5 +1,6 @@
 use crate::bus::Bus;
-use crate::cpu::Instruction::*;
+use crate::enums::Instruction;
+use crate::enums::Instruction::*;
 
 #[repr(C)]
 pub struct CPU {
@@ -17,6 +18,8 @@ pub struct CPU {
     // "был ли результат прошлого сложения равен нулю?" или "произошло ли переполнение?").
     pub sr: u16,
 
+    pub usp: u32,
+
     pub bus: Bus,
 }
 
@@ -27,6 +30,7 @@ impl CPU {
             a: [0; 8],
             pc: 0x200,
             sr: 0,
+            usp: 0,
             bus: Bus::new(),
         }
     }
@@ -45,6 +49,12 @@ impl CPU {
             return BeqS {offset}
         }
         match opcode {
+            0x1A1D => {
+                return MoveB_PostInc_A5_D5;
+            }
+            0x4E66 => {
+                return MoveA6ToUsp;
+            }
             0x2C40 => {
                 return MoveL_PreDec_A0_D6;
             }
@@ -129,6 +139,33 @@ impl CPU {
 
     pub fn execute(&mut self, inst: Instruction) {
         match inst {
+            MoveB_PostInc_A5_D5 => {
+                let addr = self.a[5];
+
+                let val = self.bus.read_u8(addr);
+
+                self.a[5] = self.a[5].wrapping_add(1);
+
+                self.sr &= !0x0F;
+
+                if val == 0 {
+                    self.sr |= 0x04;
+                }
+                if (val & 0x08) != 0 {
+                    self.sr |= 0x08;
+                }
+
+                self.d[5] = (self.d[5] & 0xFFFFFF00) | (val as u32 )
+            }
+            MoveA6ToUsp => {
+                let is_supervisor = (self.sr & 0x2000) != 0;
+
+                if !is_supervisor {
+                    panic!("permission denied");
+                }
+
+                self.usp = self.a[6];
+            }
             MoveL_PreDec_A0_D6 => {
                 self.a[0] = self.a[0].wrapping_sub(4);
 
@@ -348,23 +385,3 @@ impl CPU {
 
 }
 
-#[derive(Debug)]
-pub enum Instruction {
-    Moveq{register: u8, data: u8},
-    Unknown (u16),
-    Add{src: u8, dest: u8},
-    Bne{offset: i8},
-    Jsr { addr: u32 }, // Jump to Subroutine
-    Rts,               // Return from Subroutine
-    TstL {addr: u32},
-    LeaA7 {addr: u32},
-    TstW { addr: u32},
-    LeaPcA5 {addr: u32},
-    MovemWPostIncA5 { mask: u16 },
-    MovemLPostIncA5 { mask: u16 },
-    MoveBDispA1D0 { offset: i16 },
-    AndiB_Imm_D0 { imm: u8 },
-    BeqS {offset: i8},
-    MoveW_Ind_A4_D0,
-    MoveL_PreDec_A0_D6,
-}

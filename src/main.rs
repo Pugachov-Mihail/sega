@@ -1,5 +1,6 @@
 mod cpu;
 mod bus;
+mod enums;
 
 use cpu::CPU;
 
@@ -19,6 +20,8 @@ fn main() {
     // Читаем начальный Счетчик команд (PC / Точка входа) из адреса 0x000004
     let initial_pc = cpu.read_memory_u32(0x000004);
     cpu.pc = initial_pc;
+
+    cpu.sr = 0x2700;
 
     println!("--- СИСТЕМА ЗАПУЩЕНА ---");
     println!("Начальный SP:  {:#010X}", cpu.a[1]);
