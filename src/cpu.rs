@@ -49,6 +49,12 @@ impl CPU {
             return BeqS {offset}
         }
         match opcode {
+            0x289D => {
+                return MoveL_PostInc_A5_Ind_A4
+            }
+            0x51C9 => {
+                return Dbra_D1 { offset: self.fetch() as i16 }
+            }
             0xDA47 => {
                 return AddW_D7_D5;
             }
@@ -145,6 +151,34 @@ impl CPU {
 
     pub fn execute(&mut self, inst: Instruction) {
         match inst {
+            MoveL_PostInc_A5_Ind_A4 => {
+                let src_addr = self.a[5];
+                let val = self.read_memory_u32(src_addr);
+                self.a[5] = self.a[5].wrapping_add(4);
+
+                let dst_addr = self.a[4];
+                self.write_memory_u32(dst_addr, val);
+
+                self.sr &= !0x0F;
+
+                if val == 0 {
+                    self.sr |= 0x04;
+                }
+                if (val & 0x8000_0000) != 0 {
+                    self.sr |= 0x08;
+                }
+            }
+            Dbra_D1 {offset} => {
+                let counter = (self.d[1] & 0xFFFF) as u16;
+                let result = counter.wrapping_sub(1);
+
+                self.d[1] = (self.d[1] & 0xFFFF0000) | (result as u32);
+
+                if result != 0xFFFF {
+                    let base_pc = self.pc - 2;
+                    self.pc = (base_pc as i32 + offset as i32) as u32;
+                }
+            }
             AddW_D7_D5 => {
                 let src = (self.d[7] & 0xFFFF) as u16;
                 let dst = (self.d[5] & 0xFFFF) as u16;
