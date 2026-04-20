@@ -1,6 +1,5 @@
 mod cpu;
 mod bus;
-mod enums;
 
 use cpu::CPU;
 
